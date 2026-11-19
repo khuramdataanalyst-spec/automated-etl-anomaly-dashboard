@@ -29,11 +29,11 @@ initialize_database(engine)
 
 @st.cache_data(ttl=30)
 def load_table(_table, _order_by, limit: int = 10000) -> pd.DataFrame:
+    order_cols = _order_by if isinstance(_order_by, tuple) else (_order_by,)
     with engine.connect() as connection:
-        return pd.read_sql(select(_table).order_by(_order_by).limit(limit), connection)
+        return pd.read_sql(select(_table).order_by(*order_cols).limit(limit), connection)
 
 
-# Sidebar button to run ETL pipeline on demand
 if st.sidebar.button("🔄 Run ETL Pipeline Now"):
     with st.spinner("Fetching live market data and detecting anomalies..."):
         subprocess.run([sys.executable, "etl_pipeline.py"], check=False)
@@ -44,7 +44,6 @@ try:
         daily_prices,
         (daily_prices.c.ticker, daily_prices.c.date),
     )
-    # Auto-populate on first launch if database is empty
     if prices.empty:
         with st.spinner("Initializing database with live market data..."):
             subprocess.run([sys.executable, "etl_pipeline.py"], check=False)
@@ -73,7 +72,7 @@ health_col, run_col, loaded_col, anomaly_col = st.columns(4)
 health_col.metric("Pipeline health", f"{status_color} {status}")
 run_col.metric(
     "Last run (UTC)",
-    str(latest["started_at"]) if latest is not None else "No runs recorded",
+    str(latest["started_at"])[:19] if latest is not None else "No runs recorded",
 )
 loaded_col.metric(
     "Rows loaded",
