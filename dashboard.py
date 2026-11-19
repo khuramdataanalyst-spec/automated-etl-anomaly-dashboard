@@ -17,6 +17,8 @@ from etl_pipeline import (
     initialize_database,
     pipeline_runs,
 )
+@st.cache_data
+def load_table(table, ...):
 
 st.set_page_config(page_title="Market Data Pipeline", layout="wide")
 st.title("Market Data ETL & Anomaly Monitoring")
