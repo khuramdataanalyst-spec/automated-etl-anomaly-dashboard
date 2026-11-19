@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+import subprocess
+import sys
 
 import pandas as pd
 import plotly.express as px
@@ -17,27 +18,42 @@ from etl_pipeline import (
     initialize_database,
     pipeline_runs,
 )
-@st.cache_data
-def load_table(table, ...):
 
 st.set_page_config(page_title="Market Data Pipeline", layout="wide")
 st.title("Market Data ETL & Anomaly Monitoring")
 
+os.makedirs("./data", exist_ok=True)
 engine = get_engine(os.getenv("DATABASE_URL", "sqlite:///./data/market_data.db"))
 initialize_database(engine)
 
 
 @st.cache_data(ttl=30)
-def load_table(table, order_by, limit: int = 10000) -> pd.DataFrame:
+def load_table(_table, _order_by, limit: int = 10000) -> pd.DataFrame:
     with engine.connect() as connection:
-        return pd.read_sql(select(table).order_by(order_by).limit(limit), connection)
+        return pd.read_sql(select(_table).order_by(_order_by).limit(limit), connection)
 
+
+# Sidebar button to run ETL pipeline on demand
+if st.sidebar.button("🔄 Run ETL Pipeline Now"):
+    with st.spinner("Fetching live market data and detecting anomalies..."):
+        subprocess.run([sys.executable, "etl_pipeline.py"], check=False)
+        st.cache_data.clear()
 
 try:
     prices = load_table(
         daily_prices,
         (daily_prices.c.ticker, daily_prices.c.date),
     )
+    # Auto-populate on first launch if database is empty
+    if prices.empty:
+        with st.spinner("Initializing database with live market data..."):
+            subprocess.run([sys.executable, "etl_pipeline.py"], check=False)
+            st.cache_data.clear()
+            prices = load_table(
+                daily_prices,
+                (daily_prices.c.ticker, daily_prices.c.date),
+            )
+
     runs = load_table(pipeline_runs, pipeline_runs.c.started_at.desc(), 200)
     audit = load_table(anomaly_audit, anomaly_audit.c.created_at.desc(), 2000)
 except Exception as exc:
@@ -72,7 +88,7 @@ if latest is not None and pd.notna(latest.get("message")):
     st.warning(str(latest["message"]))
 
 if prices.empty:
-    st.info("No market data is available yet. Run `python etl_pipeline.py`.")
+    st.info("No market data is available yet. Click 'Run ETL Pipeline Now' in the sidebar.")
     st.stop()
 
 prices["date"] = pd.to_datetime(prices["date"])
